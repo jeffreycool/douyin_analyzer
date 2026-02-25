@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:get/get.dart';
@@ -74,13 +73,20 @@ class PipelineService extends GetxService {
     final workDir = await _createWorkDir();
 
     try {
-      // Stage 1: Download video
+      // Stage 1: Download video (also retrieves metadata via HTTP)
       onStatusChanged?.call(PipelineStatus.downloading, 'Downloading video...');
+
+      // Get metadata first (title, author, tags come from the same HTTP request)
+      Map<String, dynamic> metadata = {};
+      try {
+        metadata = await _downloadService.getVideoMetadata(url);
+      } catch (_) {
+        // Metadata is best-effort; continue even if it fails
+      }
 
       final videoPath = await _downloadService.downloadVideo(
         url: url,
         outputDir: workDir,
-        cookiesFile: cookiesFile,
         onProgress: onDownloadProgress != null
             ? (progress, status) => onDownloadProgress(progress, status)
             : null,
@@ -107,14 +113,15 @@ class PipelineService extends GetxService {
       onStatusChanged?.call(
           PipelineStatus.summarizing, 'Generating AI summary...');
 
-      // Extract video metadata from yt-dlp (best-effort)
-      final metadata = await _extractMetadata(url);
+      final title = metadata['title'] as String?;
+      final author = metadata['author'] as String?;
+      final tags = (metadata['tags'] as List<String>?) ?? const <String>[];
 
       final summary = await _claudeService.generateSummary(
         transcription: transcription,
-        title: metadata['title'] as String?,
-        author: metadata['author'] as String?,
-        tags: (metadata['tags'] as List<String>?) ?? const [],
+        title: title,
+        author: author,
+        tags: tags,
       );
 
       // Stage 5: Complete
@@ -122,13 +129,13 @@ class PipelineService extends GetxService {
 
       return VideoInfo(
         url: url,
-        title: metadata['title'] as String?,
-        author: metadata['author'] as String?,
+        title: title,
+        author: author,
         videoPath: videoPath,
         audioPath: audioPath,
         transcription: transcription,
         summary: summary,
-        tags: (metadata['tags'] as List<String>?) ?? const [],
+        tags: tags,
         createdAt: DateTime.now(),
       );
     } on DownloadException catch (e) {
@@ -170,63 +177,6 @@ class PipelineService extends GetxService {
         stage: PipelineStatus.error,
         message: 'Unexpected error: $e',
       );
-    }
-  }
-
-  /// Extracts video metadata using yt-dlp's JSON output.
-  ///
-  /// This is a best-effort operation; failures return empty metadata
-  /// rather than throwing exceptions.
-  Future<Map<String, dynamic>> _extractMetadata(String url) async {
-    try {
-      final result = await Process.run(
-        AppConstants.ytDlpPath,
-        [
-          '--dump-json',
-          '--no-download',
-          '--no-check-certificates',
-          url,
-        ],
-        stderrEncoding: const SystemEncoding(),
-        stdoutEncoding: const SystemEncoding(),
-      );
-
-      if (result.exitCode == 0) {
-        final stdout = result.stdout.toString().trim();
-        if (stdout.isNotEmpty) {
-          return _parseMetadataJson(stdout);
-        }
-      }
-    } catch (_) {
-      // Metadata extraction is best-effort; don't fail the pipeline
-    }
-
-    return {};
-  }
-
-  /// Parses yt-dlp JSON output to extract relevant metadata fields.
-  Map<String, dynamic> _parseMetadataJson(String jsonStr) {
-    try {
-      // yt-dlp --dump-json outputs a JSON object per line.
-      // Take the last non-empty line (in case of redirects).
-      final lines = jsonStr.split('\n').where((l) => l.trim().isNotEmpty);
-      if (lines.isEmpty) return {};
-
-      final data = jsonDecode(lines.last) as Map<String, dynamic>;
-
-      return {
-        'title': data['title'] as String? ??
-            data['fulltitle'] as String?,
-        'author': data['uploader'] as String? ??
-            data['creator'] as String? ??
-            data['channel'] as String?,
-        'tags': (data['tags'] as List<dynamic>?)
-                ?.map((t) => t.toString())
-                .toList() ??
-            <String>[],
-      };
-    } catch (_) {
-      return {};
     }
   }
 
