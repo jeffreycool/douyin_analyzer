@@ -9,6 +9,7 @@ import 'services/asr_service.dart';
 import 'services/audio_service.dart';
 import 'services/claude_service.dart';
 import 'services/download_service.dart';
+import 'services/history_service.dart';
 import 'services/pipeline_service.dart';
 
 void main() {
@@ -24,6 +25,7 @@ void _initServices() {
   Get.put(AudioService());
   Get.put(AsrService());
   Get.put(ClaudeService());
+  Get.put(HistoryService());
   // PipelineService depends on all above, register last
   Get.put(PipelineService());
 }

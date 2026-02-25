@@ -1,0 +1,34 @@
+# === Build artifacts ===
+build/
+.dart_tool/
+
+# === IDE ===
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# === macOS/Xcode build config (not relevant to Dart code) ===
+macos/Runner.xcworkspace/
+macos/Runner.xcodeproj/
+macos/Runner/Assets.xcassets/
+macos/Runner/Configs/
+macos/Runner/Base.lproj/
+macos/Podfile
+macos/Podfile.lock
+macos/Pods/
+
+# === Flutter generated ===
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+**/doc/api/
+
+# === System files ===
+.DS_Store
+*.log
+*.tmp
+*.swp
+
+# === Dependency lock (large, not useful for AI) ===
+pubspec.lock

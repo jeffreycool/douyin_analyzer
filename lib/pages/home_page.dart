@@ -500,7 +500,21 @@ class HomePage extends GetView<HomeController> {
   Widget _buildHistoryTile(ThemeData theme, VideoInfo item) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
+      child: Dismissible(
+        key: ValueKey('${item.url}_${item.createdAt?.toIso8601String()}'),
+        direction: DismissDirection.endToStart,
+        onDismissed: (_) => controller.removeHistoryItem(item),
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.error.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(Icons.delete_outline,
+              color: theme.colorScheme.error, size: 20),
+        ),
+        child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => controller.viewHistoryItem(item),
@@ -576,6 +590,7 @@ class HomePage extends GetView<HomeController> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

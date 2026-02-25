@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../models/video_info.dart';
+import '../services/history_service.dart';
 import '../services/pipeline_service.dart';
 
 class HomeController extends GetxController {
@@ -13,6 +14,20 @@ class HomeController extends GetxController {
   final history = <VideoInfo>[].obs;
 
   final urlController = TextEditingController();
+
+  late final HistoryService _historyService;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _historyService = Get.find<HistoryService>();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final items = await _historyService.loadHistory();
+    history.assignAll(items);
+  }
 
   bool get isProcessing =>
       status.value != PipelineStatus.idle &&
@@ -58,8 +73,9 @@ class HomeController extends GetxController {
       status.value = PipelineStatus.completed;
       progressMessage.value = 'Analysis complete!';
 
-      // Add to history
+      // Add to history and persist
       history.insert(0, result);
+      await _historyService.addEntry(result);
 
       // Navigate to result page
       Get.toNamed('/result');
@@ -84,6 +100,15 @@ class HomeController extends GetxController {
   /// Clear all history entries.
   void clearHistory() {
     history.clear();
+    _historyService.clearAll();
+  }
+
+  /// Remove a single history entry.
+  void removeHistoryItem(VideoInfo item) {
+    history.removeWhere((e) =>
+        e.url == item.url &&
+        e.createdAt?.toIso8601String() == item.createdAt?.toIso8601String());
+    _historyService.removeEntry(item);
   }
 
   /// Load a history item and navigate to result page.
