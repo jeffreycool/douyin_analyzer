@@ -47,7 +47,7 @@ class HomeController extends GetxController {
       final pipelineService = Get.find<PipelineService>();
 
       final result = await pipelineService.process(
-        url,
+        inputText: url,
         onStatusChanged: (newStatus, message) {
           status.value = newStatus;
           progressMessage.value = message;

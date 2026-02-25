@@ -19,11 +19,13 @@ void main() {
 /// Register all services into GetX dependency injection.
 /// Placeholder services will be replaced by actual implementations later.
 void _initServices() {
-  Get.lazyPut(() => PipelineService());
-  Get.lazyPut(() => DownloadService());
-  Get.lazyPut(() => AudioService());
-  Get.lazyPut(() => AsrService());
-  Get.lazyPut(() => ClaudeService());
+  // Register leaf services first (no dependencies)
+  Get.put(DownloadService());
+  Get.put(AudioService());
+  Get.put(AsrService());
+  Get.put(ClaudeService());
+  // PipelineService depends on all above, register last
+  Get.put(PipelineService());
 }
 
 class DouyinAnalyzerApp extends StatelessWidget {
