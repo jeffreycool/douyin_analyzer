@@ -579,12 +579,21 @@ class HomePage extends GetView<HomeController> {
                           .withValues(alpha: 0.6),
                     ),
                   ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.chevron_right,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant
-                      .withValues(alpha: 0.4),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      size: 14,
+                      color: theme.colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.5),
+                    ),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Delete',
+                    onPressed: () => controller.removeHistoryItem(item),
+                  ),
                 ),
               ],
             ),

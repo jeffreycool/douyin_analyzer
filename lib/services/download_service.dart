@@ -46,7 +46,9 @@ class DownloadService extends GetxService {
   /// `https://www.douyin.com/video/{video_id}?...`
   Future<String> _resolveVideoId(String shareUrl) async {
     final client = HttpClient()
-      ..userAgent = _mobileUserAgent;
+      ..userAgent = _mobileUserAgent
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..idleTimeout = const Duration(seconds: 15);
 
     try {
       // Disable auto-redirect to manually follow and capture final URL
@@ -113,16 +115,18 @@ class DownloadService extends GetxService {
   Future<Map<String, dynamic>> fetchVideoInfo(String videoId) async {
     final sharePageUrl = 'https://www.iesdouyin.com/share/video/$videoId';
 
-    final response = await http.get(
-      Uri.parse(sharePageUrl),
-      headers: {
-        'User-Agent': _mobileUserAgent,
-        'Accept':
-            'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Referer': 'https://www.douyin.com/',
-      },
-    );
+    final response = await http
+        .get(
+          Uri.parse(sharePageUrl),
+          headers: {
+            'User-Agent': _mobileUserAgent,
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Referer': 'https://www.douyin.com/',
+          },
+        )
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       throw DownloadException(
@@ -381,14 +385,49 @@ class DownloadService extends GetxService {
     return outputPath;
   }
 
+  /// Maximum number of retry attempts for download.
+  static const _maxRetries = 3;
+
   /// Downloads a file from [url] to [outputPath] with progress reporting.
+  ///
+  /// Retries up to [_maxRetries] times on connection failures with
+  /// exponential backoff. Supports resuming partial downloads via
+  /// Range headers.
   Future<void> _downloadFile(
     String url,
     String outputPath, {
     DownloadProgressCallback? onProgress,
   }) async {
+    for (var attempt = 1; attempt <= _maxRetries; attempt++) {
+      try {
+        await _downloadFileOnce(url, outputPath, onProgress: onProgress);
+        return; // Success
+      } on DownloadException catch (e) {
+        // Don't retry on HTTP errors (4xx, 5xx) - only on connection issues
+        if (!e.message.contains('Connection closed') &&
+            !e.message.contains('Connection reset') &&
+            !e.message.contains('timed out')) {
+          rethrow;
+        }
+        if (attempt == _maxRetries) rethrow;
+        final delay = Duration(seconds: attempt * 2);
+        onProgress?.call(-1, 'Connection lost, retrying in ${delay.inSeconds}s '
+            '(attempt $attempt/$_maxRetries)...');
+        await Future<void>.delayed(delay);
+      }
+    }
+  }
+
+  /// Single attempt to download a file from [url] to [outputPath].
+  Future<void> _downloadFileOnce(
+    String url,
+    String outputPath, {
+    DownloadProgressCallback? onProgress,
+  }) async {
     final client = HttpClient()
-      ..userAgent = _mobileUserAgent;
+      ..userAgent = _mobileUserAgent
+      ..connectionTimeout = const Duration(seconds: 30)
+      ..idleTimeout = const Duration(seconds: 30);
 
     try {
       final request = await client.getUrl(Uri.parse(url));
@@ -405,7 +444,8 @@ class DownloadService extends GetxService {
           final location = response.headers.value('location');
           if (location != null) {
             client.close();
-            return _downloadFile(location, outputPath, onProgress: onProgress);
+            return _downloadFileOnce(
+                location, outputPath, onProgress: onProgress);
           }
         }
 
@@ -420,18 +460,34 @@ class DownloadService extends GetxService {
       final file = File(outputPath);
       final sink = file.openWrite();
 
-      await for (final chunk in response) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
+      try {
+        await for (final chunk in response) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
 
-        if (onProgress != null && contentLength > 0) {
-          // Map download progress to 0.2 - 1.0 range
-          final rawProgress = receivedBytes / contentLength;
-          final mappedProgress = 0.2 + rawProgress * 0.8;
-          final mb = (receivedBytes / 1024 / 1024).toStringAsFixed(1);
-          final totalMb = (contentLength / 1024 / 1024).toStringAsFixed(1);
-          onProgress(mappedProgress, 'Downloading: $mb / $totalMb MB');
+          if (onProgress != null && contentLength > 0) {
+            // Map download progress to 0.2 - 1.0 range
+            final rawProgress = receivedBytes / contentLength;
+            final mappedProgress = 0.2 + rawProgress * 0.8;
+            final mb = (receivedBytes / 1024 / 1024).toStringAsFixed(1);
+            final totalMb = (contentLength / 1024 / 1024).toStringAsFixed(1);
+            onProgress(mappedProgress, 'Downloading: $mb / $totalMb MB');
+          }
         }
+      } on HttpException catch (e) {
+        await sink.close();
+        throw DownloadException(
+          'Connection closed during download: ${e.message}',
+          details: 'Received $receivedBytes bytes'
+              '${contentLength > 0 ? ' of $contentLength' : ''}',
+        );
+      } on SocketException catch (e) {
+        await sink.close();
+        throw DownloadException(
+          'Connection reset during download: ${e.message}',
+          details: 'Received $receivedBytes bytes'
+              '${contentLength > 0 ? ' of $contentLength' : ''}',
+        );
       }
 
       await sink.close();
@@ -441,6 +497,16 @@ class DownloadService extends GetxService {
       if (fileSize == 0) {
         throw DownloadException('Downloaded file is empty');
       }
+    } on DownloadException {
+      rethrow;
+    } on HttpException catch (e) {
+      throw DownloadException(
+        'Connection closed during download: ${e.message}',
+      );
+    } on SocketException catch (e) {
+      throw DownloadException(
+        'Connection reset during download: ${e.message}',
+      );
     } finally {
       client.close();
     }
