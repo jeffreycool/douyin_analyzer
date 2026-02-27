@@ -124,15 +124,14 @@ class PipelineService extends GetxService {
         tags: tags,
       );
 
-      // Stage 5: Complete
+      // Stage 5: Clean up temporary files and complete
+      await _cleanupWorkDir(workDir);
       onStatusChanged?.call(PipelineStatus.completed, 'Analysis complete!');
 
       return VideoInfo(
         url: url,
         title: title,
         author: author,
-        videoPath: videoPath,
-        audioPath: audioPath,
         transcription: transcription,
         summary: summary,
         tags: tags,
