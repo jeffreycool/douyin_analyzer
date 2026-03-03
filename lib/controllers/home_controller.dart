@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../models/video_info.dart';
 import '../services/history_service.dart';
 import '../services/pipeline_service.dart';
+import '../services/wechat_service.dart';
 
 class HomeController extends GetxController {
   final status = PipelineStatus.idle.obs;
@@ -12,6 +13,7 @@ class HomeController extends GetxController {
   final errorMessage = ''.obs;
   final progressMessage = ''.obs;
   final history = <VideoInfo>[].obs;
+  final currentContentType = ContentType.video.obs;
 
   final urlController = TextEditingController();
 
@@ -45,6 +47,7 @@ class HomeController extends GetxController {
   }
 
   /// Main processing pipeline entry point.
+  /// Auto-detects URL type (Douyin video vs WeChat article).
   Future<void> processUrl(String rawInput) async {
     final url = _extractUrl(rawInput);
     if (url == null || url.isEmpty) {
@@ -55,19 +58,35 @@ class HomeController extends GetxController {
     // Reset state
     errorMessage.value = '';
     progressMessage.value = 'Preparing...';
-    status.value = PipelineStatus.downloading;
     currentVideo.value = null;
+
+    final isArticle = WeChatService.isWeChatUrl(url);
+    currentContentType.value =
+        isArticle ? ContentType.article : ContentType.video;
 
     try {
       final pipelineService = Get.find<PipelineService>();
+      VideoInfo result;
 
-      final result = await pipelineService.process(
-        inputText: url,
-        onStatusChanged: (newStatus, message) {
-          status.value = newStatus;
-          progressMessage.value = message;
-        },
-      );
+      if (isArticle) {
+        status.value = PipelineStatus.fetching;
+        result = await pipelineService.processArticle(
+          url: url,
+          onStatusChanged: (newStatus, message) {
+            status.value = newStatus;
+            progressMessage.value = message;
+          },
+        );
+      } else {
+        status.value = PipelineStatus.downloading;
+        result = await pipelineService.process(
+          inputText: url,
+          onStatusChanged: (newStatus, message) {
+            status.value = newStatus;
+            progressMessage.value = message;
+          },
+        );
+      }
 
       currentVideo.value = result;
       status.value = PipelineStatus.completed;
@@ -124,6 +143,7 @@ class HomeController extends GetxController {
     currentVideo.value = null;
     errorMessage.value = '';
     progressMessage.value = '';
+    currentContentType.value = ContentType.video;
     urlController.clear();
   }
 

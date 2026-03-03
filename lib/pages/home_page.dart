@@ -131,7 +131,7 @@ class HomePage extends GetView<HomeController> {
         ),
         const SizedBox(height: 16),
         Text(
-          'Analyze Douyin Videos',
+          'Content Analyzer',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w700,
             letterSpacing: -0.5,
@@ -139,7 +139,7 @@ class HomePage extends GetView<HomeController> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Paste a Douyin share link below to extract audio, transcribe, and generate an AI summary.',
+          'Paste a Douyin share link or WeChat article URL to extract content and generate an AI summary.',
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -171,7 +171,7 @@ class HomePage extends GetView<HomeController> {
             ),
             decoration: InputDecoration(
               hintText:
-                  'Paste Douyin share text or URL here...\ne.g. https://v.douyin.com/xxxxxxx/',
+                  'Paste Douyin share text or WeChat article URL here...\ne.g. https://v.douyin.com/xxx/ or https://mp.weixin.qq.com/s/xxx',
               hintStyle: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 height: 1.5,
@@ -295,32 +295,63 @@ class HomePage extends GetView<HomeController> {
   }
 
   Widget _buildPipelineSteps(ThemeData theme, PipelineStatus currentStatus) {
-    final steps = [
-      _PipelineStep(
-        label: 'Download',
-        icon: Icons.download_outlined,
-        status: currentStatus,
-        activeAt: PipelineStatus.downloading,
-      ),
-      _PipelineStep(
-        label: 'Audio',
-        icon: Icons.audiotrack_outlined,
-        status: currentStatus,
-        activeAt: PipelineStatus.extractingAudio,
-      ),
-      _PipelineStep(
-        label: 'Transcribe',
-        icon: Icons.record_voice_over_outlined,
-        status: currentStatus,
-        activeAt: PipelineStatus.transcribing,
-      ),
-      _PipelineStep(
-        label: 'Summarize',
-        icon: Icons.auto_awesome_outlined,
-        status: currentStatus,
-        activeAt: PipelineStatus.summarizing,
-      ),
-    ];
+    final isArticle =
+        controller.currentContentType.value == ContentType.article;
+
+    final steps = isArticle
+        ? [
+            _PipelineStep(
+              label: 'Fetch',
+              icon: Icons.cloud_download_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.fetching,
+              pipeline: _PipelineType.article,
+            ),
+            _PipelineStep(
+              label: 'Extract',
+              icon: Icons.article_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.extracting,
+              pipeline: _PipelineType.article,
+            ),
+            _PipelineStep(
+              label: 'Summarize',
+              icon: Icons.auto_awesome_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.summarizing,
+              pipeline: _PipelineType.article,
+            ),
+          ]
+        : [
+            _PipelineStep(
+              label: 'Download',
+              icon: Icons.download_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.downloading,
+              pipeline: _PipelineType.video,
+            ),
+            _PipelineStep(
+              label: 'Audio',
+              icon: Icons.audiotrack_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.extractingAudio,
+              pipeline: _PipelineType.video,
+            ),
+            _PipelineStep(
+              label: 'Transcribe',
+              icon: Icons.record_voice_over_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.transcribing,
+              pipeline: _PipelineType.video,
+            ),
+            _PipelineStep(
+              label: 'Summarize',
+              icon: Icons.auto_awesome_outlined,
+              status: currentStatus,
+              activeAt: PipelineStatus.summarizing,
+              pipeline: _PipelineType.video,
+            ),
+          ];
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -539,7 +570,9 @@ class HomePage extends GetView<HomeController> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    Icons.play_circle_outline,
+                    item.contentType.isArticle
+                        ? Icons.article_outlined
+                        : Icons.play_circle_outline,
                     size: 18,
                     color: theme.colorScheme.primary,
                   ),
@@ -550,7 +583,10 @@ class HomePage extends GetView<HomeController> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        item.title ?? 'Untitled Video',
+                        item.title ??
+                            (item.contentType.isArticle
+                                ? 'Untitled Article'
+                                : 'Untitled Video'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontWeight: FontWeight.w500,
                         ),
@@ -617,26 +653,39 @@ class HomePage extends GetView<HomeController> {
   }
 }
 
+enum _PipelineType { video, article }
+
 /// Internal helper class to track pipeline step state.
 class _PipelineStep {
   final String label;
   final IconData icon;
   final PipelineStatus status;
   final PipelineStatus activeAt;
+  final _PipelineType pipeline;
 
   const _PipelineStep({
     required this.label,
     required this.icon,
     required this.status,
     required this.activeAt,
+    required this.pipeline,
   });
 
-  static const _order = [
+  static const _videoOrder = [
     PipelineStatus.downloading,
     PipelineStatus.extractingAudio,
     PipelineStatus.transcribing,
     PipelineStatus.summarizing,
   ];
+
+  static const _articleOrder = [
+    PipelineStatus.fetching,
+    PipelineStatus.extracting,
+    PipelineStatus.summarizing,
+  ];
+
+  List<PipelineStatus> get _order =>
+      pipeline == _PipelineType.article ? _articleOrder : _videoOrder;
 
   bool get isActive => status == activeAt;
 
@@ -644,7 +693,6 @@ class _PipelineStep {
     final currentIndex = _order.indexOf(status);
     final myIndex = _order.indexOf(activeAt);
     if (currentIndex == -1 || myIndex == -1) {
-      // completed or error: all steps before are completed
       return status == PipelineStatus.completed ||
           (status == PipelineStatus.error && myIndex < _order.length);
     }

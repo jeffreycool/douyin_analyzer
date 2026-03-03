@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../controllers/home_controller.dart';
+import '../models/video_info.dart';
 
 class ResultPage extends GetView<HomeController> {
   const ResultPage({super.key});
@@ -29,7 +30,7 @@ class ResultPage extends GetView<HomeController> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.videocam_off_outlined,
+                        Icons.content_paste_off_outlined,
                         size: 48,
                         color: theme.colorScheme.onSurfaceVariant
                             .withValues(alpha: 0.3),
@@ -166,7 +167,9 @@ class ResultPage extends GetView<HomeController> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              Icons.smart_display_outlined,
+              video.contentType == ContentType.article
+                  ? Icons.article_outlined
+                  : Icons.smart_display_outlined,
               size: 24,
               color: theme.colorScheme.primary,
             ),
@@ -177,7 +180,10 @@ class ResultPage extends GetView<HomeController> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  video.title ?? 'Untitled Video',
+                  video.title ??
+                      (video.contentType == ContentType.article
+                          ? 'Untitled Article'
+                          : 'Untitled Video'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.3,
@@ -319,15 +325,20 @@ class ResultPage extends GetView<HomeController> {
   }
 
   Widget _buildTranscriptionSection(ThemeData theme, dynamic video) {
-    final transcription = video.transcription;
-    if (transcription == null || transcription.isEmpty) {
+    final isArticle = video.contentType == ContentType.article;
+    final text = isArticle ? video.articleContent : video.transcription;
+    if (text == null || (text as String).isEmpty) {
       return const SizedBox.shrink();
     }
 
     return _ExpandableSection(
       theme: theme,
-      title: 'Original Transcription (ASR)',
-      icon: Icons.record_voice_over_outlined,
+      title: isArticle
+          ? 'Original Article Text'
+          : 'Original Transcription (ASR)',
+      icon: isArticle
+          ? Icons.article_outlined
+          : Icons.record_voice_over_outlined,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -337,7 +348,7 @@ class ResultPage extends GetView<HomeController> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: SelectableText(
-          transcription,
+          text,
           style: theme.textTheme.bodySmall?.copyWith(
             height: 1.8,
             fontFamily: '.AppleSystemUIFont',
@@ -433,8 +444,12 @@ class ResultPage extends GetView<HomeController> {
       final fileName = '${safeTitle}_$timestamp.md';
       final filePath = '${directory.path}/$fileName';
 
+      final isArticle = video.contentType == ContentType.article;
+      final defaultTitle =
+          isArticle ? 'Untitled Article' : 'Untitled Video';
+
       final content = StringBuffer();
-      content.writeln('# ${video.title ?? "Untitled Video"}');
+      content.writeln('# ${video.title ?? defaultTitle}');
       content.writeln();
       if (video.author != null) {
         content.writeln('**Author:** ${video.author}');
@@ -449,12 +464,16 @@ class ResultPage extends GetView<HomeController> {
       content.writeln();
       content.writeln(video.summary ?? 'No summary available.');
       content.writeln();
-      if (video.transcription != null) {
+      final originalText =
+          isArticle ? video.articleContent : video.transcription;
+      if (originalText != null) {
         content.writeln('---');
         content.writeln();
-        content.writeln('## Original Transcription');
+        content.writeln(isArticle
+            ? '## Original Article'
+            : '## Original Transcription');
         content.writeln();
-        content.writeln(video.transcription);
+        content.writeln(originalText);
       }
 
       final file = File(filePath);

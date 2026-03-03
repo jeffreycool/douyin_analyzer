@@ -118,6 +118,79 @@ class ClaudeService extends GetxService {
     return summary;
   }
 
+  /// Generates a Markdown summary of a WeChat article based on its text content.
+  Future<String> generateArticleSummary({
+    required String content,
+    required String title,
+    String? author,
+    String? account,
+    Duration timeout = defaultTimeout,
+  }) async {
+    if (content.trim().isEmpty) {
+      throw ClaudeException('Cannot generate summary from empty article content');
+    }
+
+    final prompt = AppConstants.articleSummaryUserPrompt
+        .replaceAll('{content}', content)
+        .replaceAll('{title}', title)
+        .replaceAll('{author}', author ?? 'Unknown')
+        .replaceAll('{account}', account ?? 'Unknown');
+
+    final process = await Process.start(
+      AppConstants.claudePath,
+      [
+        '-p',
+        '--output-format', 'text',
+        '--system-prompt', AppConstants.articleSummarySystemPrompt,
+        '--setting-sources', '',
+      ],
+      environment: {
+        'HOME': Platform.environment['HOME'] ?? '',
+        'PATH': Platform.environment['PATH'] ?? '/usr/local/bin:/usr/bin:/bin',
+        'USER': Platform.environment['USER'] ?? '',
+        'LANG': 'en_US.UTF-8',
+      },
+      includeParentEnvironment: false,
+    );
+
+    process.stdin.writeln(prompt);
+    await process.stdin.close();
+
+    final stdoutFuture = process.stdout
+        .transform(const SystemEncoding().decoder)
+        .join();
+    final stderrFuture = process.stderr
+        .transform(const SystemEncoding().decoder)
+        .join();
+
+    final exitCode = await process.exitCode.timeout(
+      timeout,
+      onTimeout: () {
+        process.kill(ProcessSignal.sigterm);
+        throw ClaudeException(
+          'Claude CLI timed out after ${timeout.inSeconds} seconds.',
+        );
+      },
+    );
+
+    final stdout = await stdoutFuture;
+    final stderr = await stderrFuture;
+
+    if (exitCode != 0) {
+      throw ClaudeException(
+        'Claude CLI exited with code $exitCode',
+        details: stderr.isNotEmpty ? stderr : stdout,
+      );
+    }
+
+    final summary = stdout.trim();
+    if (summary.isEmpty) {
+      throw ClaudeException('Claude CLI produced empty output.');
+    }
+
+    return summary;
+  }
+
   /// Builds the full prompt by substituting values into the template.
   String _buildPrompt({
     required String transcription,

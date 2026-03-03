@@ -9,6 +9,7 @@ import 'audio_service.dart';
 import 'asr_service.dart';
 import 'claude_service.dart';
 import 'download_service.dart';
+import 'wechat_service.dart';
 
 /// Callback for pipeline status changes.
 typedef PipelineStatusCallback = void Function(
@@ -31,6 +32,7 @@ class PipelineService extends GetxService {
   late final AudioService _audioService;
   late final AsrService _asrService;
   late final ClaudeService _claudeService;
+  late final WeChatService _weChatService;
 
   @override
   void onInit() {
@@ -39,6 +41,7 @@ class PipelineService extends GetxService {
     _audioService = Get.find<AudioService>();
     _asrService = Get.find<AsrService>();
     _claudeService = Get.find<ClaudeService>();
+    _weChatService = Get.find<WeChatService>();
   }
 
   /// Runs the full analysis pipeline for a Douyin video.
@@ -172,6 +175,65 @@ class PipelineService extends GetxService {
     } catch (e) {
       onStatusChanged?.call(PipelineStatus.error, e.toString());
       await _cleanupWorkDir(workDir);
+      throw PipelineException(
+        stage: PipelineStatus.error,
+        message: 'Unexpected error: $e',
+      );
+    }
+  }
+
+  /// Runs the article analysis pipeline for a WeChat article.
+  Future<VideoInfo> processArticle({
+    required String url,
+    PipelineStatusCallback? onStatusChanged,
+  }) async {
+    try {
+      // Stage 1: Fetch and parse article
+      onStatusChanged?.call(PipelineStatus.fetching, 'Fetching article...');
+      final article = await _weChatService.fetchArticle(url);
+
+      // Stage 2: Content extracted
+      onStatusChanged?.call(
+          PipelineStatus.extracting, 'Extracting content...');
+
+      // Stage 3: Generate summary
+      onStatusChanged?.call(
+          PipelineStatus.summarizing, 'Generating AI summary...');
+
+      final summary = await _claudeService.generateArticleSummary(
+        content: article.content,
+        title: article.title,
+        author: article.author,
+        account: article.account,
+      );
+
+      onStatusChanged?.call(PipelineStatus.completed, 'Analysis complete!');
+
+      return VideoInfo(
+        url: url,
+        title: article.title,
+        author: article.author ?? article.account,
+        summary: summary,
+        articleContent: article.content,
+        contentType: ContentType.article,
+        createdAt: DateTime.now(),
+      );
+    } on WeChatException catch (e) {
+      onStatusChanged?.call(PipelineStatus.error, e.message);
+      throw PipelineException(
+        stage: PipelineStatus.fetching,
+        message: e.message,
+        details: e.details,
+      );
+    } on ClaudeException catch (e) {
+      onStatusChanged?.call(PipelineStatus.error, e.message);
+      throw PipelineException(
+        stage: PipelineStatus.summarizing,
+        message: e.message,
+        details: e.details,
+      );
+    } catch (e) {
+      onStatusChanged?.call(PipelineStatus.error, e.toString());
       throw PipelineException(
         stage: PipelineStatus.error,
         message: 'Unexpected error: $e',

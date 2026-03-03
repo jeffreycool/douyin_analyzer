@@ -11,6 +11,7 @@ import 'services/claude_service.dart';
 import 'services/download_service.dart';
 import 'services/history_service.dart';
 import 'services/pipeline_service.dart';
+import 'services/wechat_service.dart';
 
 void main() {
   _initServices();
@@ -26,6 +27,7 @@ void _initServices() {
   Get.put(AsrService());
   Get.put(ClaudeService());
   Get.put(HistoryService());
+  Get.put(WeChatService());
   // PipelineService depends on all above, register last
   Get.put(PipelineService());
 }
