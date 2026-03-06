@@ -112,7 +112,24 @@ class DownloadService extends GetxService {
   /// Fetches video metadata and watermark-free download URL from iesdouyin.com.
   ///
   /// Returns a map with keys: 'videoUrl', 'title', 'author', 'tags'.
+  /// Retries up to 3 times on parsing failures (Douyin anti-scraping may
+  /// return incomplete pages intermittently).
   Future<Map<String, dynamic>> fetchVideoInfo(String videoId) async {
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await _fetchVideoInfoOnce(videoId);
+      } on DownloadException catch (e) {
+        if (attempt == 3 ||
+            !e.message.contains('Could not find video data')) {
+          rethrow;
+        }
+        await Future<void>.delayed(Duration(seconds: attempt * 2));
+      }
+    }
+    throw DownloadException('Unreachable');
+  }
+
+  Future<Map<String, dynamic>> _fetchVideoInfoOnce(String videoId) async {
     final sharePageUrl = 'https://www.iesdouyin.com/share/video/$videoId';
 
     final response = await http
