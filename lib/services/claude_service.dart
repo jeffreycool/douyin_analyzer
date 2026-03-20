@@ -62,12 +62,7 @@ class ClaudeService extends GetxService {
         '--system-prompt', AppConstants.summarySystemPrompt,
         '--setting-sources', '',
       ],
-      environment: {
-        'HOME': Platform.environment['HOME'] ?? '',
-        'PATH': Platform.environment['PATH'] ?? '/usr/local/bin:/usr/bin:/bin',
-        'USER': Platform.environment['USER'] ?? '',
-        'LANG': 'en_US.UTF-8',
-      },
+      environment: _buildIsolatedEnv(),
       includeParentEnvironment: false,
     );
 
@@ -144,12 +139,7 @@ class ClaudeService extends GetxService {
         '--system-prompt', AppConstants.articleSummarySystemPrompt,
         '--setting-sources', '',
       ],
-      environment: {
-        'HOME': Platform.environment['HOME'] ?? '',
-        'PATH': Platform.environment['PATH'] ?? '/usr/local/bin:/usr/bin:/bin',
-        'USER': Platform.environment['USER'] ?? '',
-        'LANG': 'en_US.UTF-8',
-      },
+      environment: _buildIsolatedEnv(),
       includeParentEnvironment: false,
     );
 
@@ -189,6 +179,29 @@ class ClaudeService extends GetxService {
     }
 
     return summary;
+  }
+
+  /// Builds an isolated environment for the Claude CLI subprocess.
+  ///
+  /// Includes proxy variables (http_proxy, https_proxy, all_proxy) so the CLI
+  /// can reach the Anthropic API through a local proxy when one is configured.
+  static Map<String, String> _buildIsolatedEnv() {
+    final env = Platform.environment;
+    final result = <String, String>{
+      'HOME': env['HOME'] ?? '',
+      'PATH': env['PATH'] ?? '/usr/local/bin:/usr/bin:/bin',
+      'USER': env['USER'] ?? '',
+      'LANG': 'en_US.UTF-8',
+    };
+    // Forward proxy settings if present
+    for (final key in ['http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+                        'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY']) {
+      final value = env[key];
+      if (value != null && value.isNotEmpty) {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   /// Builds the full prompt by substituting values into the template.
