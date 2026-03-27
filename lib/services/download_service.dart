@@ -130,7 +130,7 @@ class DownloadService extends GetxService {
   }
 
   Future<Map<String, dynamic>> _fetchVideoInfoOnce(String videoId) async {
-    final sharePageUrl = 'https://www.iesdouyin.com/share/video/$videoId';
+    final sharePageUrl = 'https://m.douyin.com/share/video/$videoId';
 
     final response = await http
         .get(
@@ -177,11 +177,15 @@ class DownloadService extends GetxService {
       }
 
       // Try different key patterns
+      // m.douyin.com uses keys like "video_(id)/page", "video_page", "note_..."
       Map<String, dynamic>? pageData;
       for (final key in loaderData.keys) {
         if (key.contains('video_') || key.contains('note_')) {
-          pageData = loaderData[key] as Map<String, dynamic>?;
-          break;
+          final value = loaderData[key];
+          if (value is Map<String, dynamic>) {
+            pageData = value;
+            break;
+          }
         }
       }
 
